@@ -12,39 +12,19 @@ const pool = new Pool({
 // Initialize database tables with user authentication
 const initDB = async () => {
   try {
-    // Users table for authentication (keeping your existing structure)
+    // STEP 1: Create users table first (since other tables reference it)
     await pool.query(`
       CREATE TABLE IF NOT EXISTS users (
         id SERIAL PRIMARY KEY,
         name VARCHAR(100) NOT NULL,
         email VARCHAR(100) UNIQUE NOT NULL,
         password VARCHAR(100) NOT NULL,
-        
         status VARCHAR(20) DEFAULT 'active',
         isdeleted BOOLEAN DEFAULT false
-        
       )
     `);
 
-    // Add user_id to campaigns table (modify existing table)
-    await pool.query(`
-      ALTER TABLE campaigns 
-      ADD COLUMN IF NOT EXISTS user_id INTEGER REFERENCES users(id) ON DELETE CASCADE
-    `);
-
-    // Add user_id to recipients table (modify existing table)
-    await pool.query(`
-      ALTER TABLE recipients 
-      ADD COLUMN IF NOT EXISTS user_id INTEGER REFERENCES users(id) ON DELETE CASCADE
-    `);
-
-    // Add user_id to email_opens table (modify existing table)
-    await pool.query(`
-      ALTER TABLE email_opens 
-      ADD COLUMN IF NOT EXISTS user_id INTEGER REFERENCES users(id) ON DELETE CASCADE
-    `);
-
-    // Your existing tables remain the same, just ensuring they exist
+    // STEP 2: Create all other tables with user_id columns included
     await pool.query(`
       CREATE TABLE IF NOT EXISTS campaigns (
         id SERIAL PRIMARY KEY,
@@ -86,7 +66,39 @@ const initDB = async () => {
       )
     `);
 
-    // Create indexes for better performance
+    // STEP 3: Only add columns if they don't exist (for existing databases)
+    // This is safer than ALTER TABLE and won't fail if tables already exist with these columns
+    await pool.query(`
+      DO $$ 
+      BEGIN
+        IF NOT EXISTS (SELECT 1 FROM information_schema.columns 
+                      WHERE table_name = 'campaigns' AND column_name = 'user_id') THEN
+          ALTER TABLE campaigns ADD COLUMN user_id INTEGER REFERENCES users(id) ON DELETE CASCADE;
+        END IF;
+      END $$;
+    `);
+
+    await pool.query(`
+      DO $$ 
+      BEGIN
+        IF NOT EXISTS (SELECT 1 FROM information_schema.columns 
+                      WHERE table_name = 'recipients' AND column_name = 'user_id') THEN
+          ALTER TABLE recipients ADD COLUMN user_id INTEGER REFERENCES users(id) ON DELETE CASCADE;
+        END IF;
+      END $$;
+    `);
+
+    await pool.query(`
+      DO $$ 
+      BEGIN
+        IF NOT EXISTS (SELECT 1 FROM information_schema.columns 
+                      WHERE table_name = 'email_opens' AND column_name = 'user_id') THEN
+          ALTER TABLE email_opens ADD COLUMN user_id INTEGER REFERENCES users(id) ON DELETE CASCADE;
+        END IF;
+      END $$;
+    `);
+
+    // STEP 4: Create indexes for better performance
     await pool.query(`
       CREATE INDEX IF NOT EXISTS idx_users_email ON users(email);
       CREATE INDEX IF NOT EXISTS idx_users_status ON users(status);
@@ -101,7 +113,7 @@ const initDB = async () => {
       CREATE INDEX IF NOT EXISTS idx_email_opens_opened_at ON email_opens(opened_at);
     `);
 
-    // Create trigger function to update updated_at timestamp
+    // STEP 5: Create trigger function to update updated_at timestamp
     await pool.query(`
       CREATE OR REPLACE FUNCTION update_updated_at_column()
       RETURNS TRIGGER AS $$
@@ -112,7 +124,7 @@ const initDB = async () => {
       $$ language 'plpgsql';
     `);
 
-    // Create triggers for updated_at columns
+    // STEP 6: Create triggers for updated_at columns
     await pool.query(`
       DROP TRIGGER IF EXISTS update_users_updated_at ON users;
       CREATE TRIGGER update_users_updated_at
@@ -194,9 +206,8 @@ const getCampaignAnalytics = async (campaignId, userId) => {
   }
 };
 
-
 module.exports = {
   pool,
   initDB,
- getCampaignAnalytics
+  getCampaignAnalytics
 };

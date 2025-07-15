@@ -4,18 +4,21 @@ services:
   postgres:
     image: postgres:15-alpine
     environment:
-      POSTGRES_DB: email_campaigns
+      POSTGRES_DB: postgres
       POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: password
+      POSTGRES_PASSWORD: admin
+      PGDATA: /var/lib/postgresql/data/pgdata
     ports:
       - "5432:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
+      - ./init-db:/docker-entrypoint-initdb.d
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U postgres"]
-      interval: 10s
+      test: ["CMD-SHELL", "pg_isready -U postgres -d postgres"]
+      interval: 5s
       timeout: 5s
-      retries: 5
+      retries: 10
+      start_period: 30s
 
   redis:
     image: redis:7-alpine
@@ -28,6 +31,52 @@ services:
       interval: 10s
       timeout: 5s
       retries: 5
+
+  app:
+    image: node:18-alpine
+    ports:
+      - "5000:5000"
+    volumes:
+      - .:/app
+      - /app/node_modules
+    working_dir: /app
+    command: sh -c "npm install && sleep 5 && npm run dev"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    environment:
+      - NODE_ENV=development
+      - DATABASE_URL=postgres://postgres:admin@postgres:5432/postgres
+      - REDIS_URL=redis://redis:6379
+      - PGCONNECT_TIMEOUT=30
+      - PGCOMMAND_TIMEOUT=30
+    stdin_open: true
+    tty: true
+    restart: unless-stopped
+
+  worker:
+    image: node:18-alpine
+    volumes:
+      - .:/app
+      - /app/node_modules
+    working_dir: /app
+    command: sh -c "npm install && sleep 5 && node worker.js"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    environment:
+      - NODE_ENV=development
+      - DATABASE_URL=postgres://postgres:admin@postgres:5432/postgres
+      - REDIS_URL=redis://redis:6379
+      - PGCONNECT_TIMEOUT=30
+      - PGCOMMAND_TIMEOUT=30
+    stdin_open: true
+    tty: true
+    restart: unless-stopped
 
 volumes:
   postgres_data:
