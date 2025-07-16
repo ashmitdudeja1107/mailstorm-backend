@@ -3,7 +3,7 @@ const multer = require('multer');
 const csv = require('csv-parser');
 const fs = require('fs');
 const { Queue } = require('bullmq');
-const redisConnection = require('../config/redis');
+const { redisConfig } = require('../config/redis'); // ✅ Updated
 const { getCampaignAnalytics } = require('../config/database');
 const Campaign = require('../models/Campaign');
 const Recipient = require('../models/Recipient');
@@ -16,9 +16,9 @@ const router = express.Router();
 const upload = multer({ dest: 'uploads/' });
 const emailTrackingService = new EmailTrackingService();
 
-// Create email queue
+// ✅ Use redisConfig for BullMQ connection
 const emailQueue = new Queue('email-queue', {
-  connection: redisConnection,
+  connection: redisConfig,
   defaultJobOptions: {
     removeOnComplete: 100,
     removeOnFail: 50,
