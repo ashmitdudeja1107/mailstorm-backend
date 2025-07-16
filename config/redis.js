@@ -1,4 +1,5 @@
 const Redis = require('ioredis');
+require('dotenv').config();
 
 // Debug environment variables
 console.log('=== ENVIRONMENT VARIABLES DEBUG ===');
@@ -12,7 +13,7 @@ console.log('NODE_ENV:', process.env.NODE_ENV);
 const redisConfig = {
   host: 'valkey-291ddeb5-ashmit-650b.f.aivencloud.com',
   port: 19758,
-  password: 'AVNS_gabaGJfhvLoDRVicF-i',
+  password: process.env.REDIS_PASSWORD,
   db: 0,
   tls: {
     servername: 'valkey-291ddeb5-ashmit-650b.f.aivencloud.com'
