@@ -16,7 +16,7 @@ const redisConfig = {
   password: process.env.REDIS_PASSWORD,
   db: 0,
   tls: {
-    servername: 'valkey-291ddeb5-ashmit-650b.f.aivencloud.com'
+    servername: process.env.REDIS_HOST
   },
   connectTimeout: 60000,
   commandTimeout: 15000,
