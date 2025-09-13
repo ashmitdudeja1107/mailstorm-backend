@@ -1,69 +1,123 @@
-const { Resend } = require('resend');
+const { Worker } = require('bullmq');
+const { redisConfig } = require('./config/redis'); // ✅ Use redisConfig for BullMQ
+const { transporter } = require('./config/email');
+const Campaign = require('./models/Campaign');
+const Recipient = require('./models/Recipient');
 require('dotenv').config();
 
-// Validate required environment variables
-if (!process.env.RESEND_API_KEY) {
-  throw new Error('RESEND_API_KEY is required in environment variables');
-}
+// Create worker
+const emailWorker = new Worker('email-queue', async (job) => {
+  const { campaignId, recipientId, to, name, subject, body, userId } = job.data;
 
-if (!process.env.FROM_EMAIL) {
-  throw new Error('FROM_EMAIL is required in environment variables');
-}
-
-// Create Resend instance
-const resend = new Resend(process.env.RESEND_API_KEY);
-
-// Create a compatible transporter interface for your existing code
-const createTransporter = () => {
-  return {
-    sendMail: async (mailOptions) => {
-      try {
-        console.log(`📧 Sending email via Resend to: ${mailOptions.to}`);
-        
-        const { data, error } = await resend.emails.send({
-          from: mailOptions.from,
-          to: [mailOptions.to],
-          subject: mailOptions.subject,
-          html: mailOptions.html,
-          text: mailOptions.text || mailOptions.html?.replace(/<[^>]*>/g, ''),
-        });
-
-        if (error) {
-          console.error('❌ Resend API error:', error);
-          throw new Error(`Resend API error: ${error.message}`);
-        }
-
-        console.log(`✅ Email sent successfully via Resend. ID: ${data.id}`);
-        return { messageId: data.id };
-      } catch (error) {
-        console.error('❌ Failed to send email via Resend:', error);
-        throw error;
-      }
-    },
-
-    verify: async () => {
-      console.log('✅ Resend transporter configured');
-      return true;
-    }
-  };
-};
-
-const transporter = createTransporter();
-
-// Verify transporter configuration
-const verifyTransporter = async () => {
   try {
-    await transporter.verify();
-    console.log('✅ Resend transporter ready');
-    return true;
+    console.log(`Processing email job for recipient: ${to}`);
+
+    if (!campaignId || !recipientId || !to || !subject || !userId) {
+      throw new Error('Missing required job parameters: campaignId, recipientId, to, subject, or userId');
+    }
+
+    if (!body) {
+      throw new Error('Email body is required but was not provided');
+    }
+
+    const campaign = await Campaign.findById(campaignId, userId);
+    if (!campaign || campaign.status === 'paused') {
+      throw new Error('Campaign is not active or not found');
+    }
+
+    let personalizedBody = body;
+    if (name && typeof body === 'string') {
+      personalizedBody = body.replace(/\{name\}/g, name);
+    }
+
+    const mailOptions = {
+      from: `${process.env.FROM_NAME} <${process.env.FROM_EMAIL}>`,
+      to,
+      subject,
+      html: personalizedBody,
+      text: personalizedBody.replace(/<[^>]*>/g, '')
+    };
+
+    await transporter.sendMail(mailOptions);
+
+    await Recipient.updateStatus(recipientId, 'sent', userId);
+
+    console.log(`Email sent successfully to: ${to}`);
+
+    await checkCampaignCompletion(campaignId, userId);
+
+    return { success: true, message: `Email sent to ${to}` };
   } catch (error) {
-    console.error('❌ Resend transporter verification failed:', error);
+    console.error(`Failed to send email to ${to}:`, error);
+
+    await Recipient.updateStatus(recipientId, 'failed', userId, error.message);
+
+    await checkCampaignCompletion(campaignId, userId);
+
     throw error;
   }
-};
+}, {
+  connection: redisConfig, // ✅ This avoids ECONNREFUSED
+  concurrency: 5,
+  limiter: {
+    max: 100,
+    duration: 60 * 60 * 1000,
+  },
+});
 
-module.exports = {
-  transporter,
-  verifyTransporter,
-  resend
-};
+// Function to check if campaign is completed
+async function checkCampaignCompletion(campaignId, userId) {
+  try {
+    console.log(`Checking campaign completion for campaign ${campaignId}`);
+
+    const pendingRecipients = await Recipient.getPendingByCampaignId(campaignId, userId);
+    console.log(`Found ${pendingRecipients.length} pending recipients for campaign ${campaignId}`);
+
+    if (pendingRecipients.length === 0) {
+      console.log(`All emails processed for campaign ${campaignId}, marking as completed`);
+      await Campaign.updateStatus(campaignId, 'completed', userId);
+      console.log(`✅ Campaign ${campaignId} marked as COMPLETED`);
+
+      const stats = await Campaign.getCampaignStats(campaignId, userId);
+      console.log(`Final stats for campaign ${campaignId}:`, {
+        total: stats.total_recipients,
+        sent: stats.sent_count,
+        failed: stats.failed_count
+      });
+    } else {
+      console.log(`Campaign ${campaignId} still has ${pendingRecipients.length} pending emails`);
+    }
+  } catch (error) {
+    console.error(`❌ Error checking campaign completion for ${campaignId}:`, error);
+  }
+}
+
+// Worker event handlers
+emailWorker.on('ready', () => {
+  console.log('✅ Email worker is ready');
+});
+
+emailWorker.on('active', (job) => {
+  console.log(`🔄 Job ${job.id} is now active`);
+});
+
+emailWorker.on('completed', (job, result) => {
+  console.log(`✅ Job ${job.id} completed with result:`, result);
+});
+
+emailWorker.on('failed', (job, err) => {
+  console.error(`❌ Job ${job.id} failed with error:`, err);
+});
+
+emailWorker.on('error', (err) => {
+  console.error('❌ Worker error:', err);
+});
+
+// Graceful shutdown
+process.on('SIGINT', async () => {
+  console.log('🛑 Shutting down worker...');
+  await emailWorker.close();
+  process.exit(0);
+});
+
+console.log('🚀 Email worker started successfully');
