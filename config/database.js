@@ -21,7 +21,10 @@ const initDB = async () => {
         email VARCHAR(100) UNIQUE NOT NULL,
         password VARCHAR(100) NOT NULL,
         status VARCHAR(20) DEFAULT 'active',
-        isdeleted BOOLEAN DEFAULT false
+        isdeleted BOOLEAN DEFAULT false,
+        manual_check BOOLEAN DEFAULT false,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
       )
     `);
 
@@ -67,8 +70,37 @@ const initDB = async () => {
       )
     `);
 
-    // STEP 3: Only add columns if they don't exist (for existing databases)
-    // This is safer than ALTER TABLE and won't fail if tables already exist with these columns
+    // STEP 3: Add new columns if they don't exist (for existing databases)
+    await pool.query(`
+      DO $$ 
+      BEGIN
+        IF NOT EXISTS (SELECT 1 FROM information_schema.columns 
+                      WHERE table_name = 'users' AND column_name = 'manual_check') THEN
+          ALTER TABLE users ADD COLUMN manual_check BOOLEAN DEFAULT false;
+        END IF;
+      END $$;
+    `);
+
+    await pool.query(`
+      DO $$ 
+      BEGIN
+        IF NOT EXISTS (SELECT 1 FROM information_schema.columns 
+                      WHERE table_name = 'users' AND column_name = 'created_at') THEN
+          ALTER TABLE users ADD COLUMN created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP;
+        END IF;
+      END $$;
+    `);
+
+    await pool.query(`
+      DO $$ 
+      BEGIN
+        IF NOT EXISTS (SELECT 1 FROM information_schema.columns 
+                      WHERE table_name = 'users' AND column_name = 'updated_at') THEN
+          ALTER TABLE users ADD COLUMN updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP;
+        END IF;
+      END $$;
+    `);
+
     await pool.query(`
       DO $$ 
       BEGIN
@@ -103,6 +135,7 @@ const initDB = async () => {
     await pool.query(`
       CREATE INDEX IF NOT EXISTS idx_users_email ON users(email);
       CREATE INDEX IF NOT EXISTS idx_users_status ON users(status);
+      CREATE INDEX IF NOT EXISTS idx_users_manual_check ON users(manual_check);
       CREATE INDEX IF NOT EXISTS idx_campaigns_user_id ON campaigns(user_id);
       CREATE INDEX IF NOT EXISTS idx_campaigns_status ON campaigns(status);
       CREATE INDEX IF NOT EXISTS idx_recipients_campaign_id ON recipients(campaign_id);
@@ -142,7 +175,7 @@ const initDB = async () => {
         EXECUTE FUNCTION update_updated_at_column();
     `);
 
-    console.log('Database initialized successfully with user authentication');
+    console.log('Database initialized successfully with user authentication and manual check');
   } catch (error) {
     console.error('Database initialization error:', error);
     throw error;
@@ -207,9 +240,51 @@ const getCampaignAnalytics = async (campaignId, userId) => {
   }
 };
 
+// Function to approve a user's manual check
+const approveUser = async (userId) => {
+  try {
+    const query = `
+      UPDATE users 
+      SET manual_check = true, updated_at = CURRENT_TIMESTAMP 
+      WHERE id = $1
+      RETURNING id, name, email, manual_check
+    `;
+    
+    const result = await pool.query(query, [userId]);
+    
+    if (result.rows.length === 0) {
+      return null;
+    }
+    
+    return result.rows[0];
+  } catch (error) {
+    console.error('Error approving user:', error);
+    throw error;
+  }
+};
+
+// Function to get all users pending approval
+const getPendingUsers = async () => {
+  try {
+    const query = `
+      SELECT id, name, email, created_at 
+      FROM users 
+      WHERE manual_check = false AND isdeleted = false
+      ORDER BY created_at DESC
+    `;
+    
+    const result = await pool.query(query);
+    return result.rows;
+  } catch (error) {
+    console.error('Error getting pending users:', error);
+    throw error;
+  }
+};
+
 module.exports = {
   pool,
   initDB,
-  getCampaignAnalytics
-
+  getCampaignAnalytics,
+  approveUser,
+  getPendingUsers
 };
