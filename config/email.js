@@ -1,58 +1,29 @@
-const { Resend } = require('resend');
+const nodemailer = require('nodemailer');
 require('dotenv').config();
 
-// Validate required environment variables
-if (!process.env.RESEND_API_KEY) {
-  throw new Error('RESEND_API_KEY is required in environment variables');
-}
-
-if (!process.env.FROM_EMAIL) {
-  throw new Error('FROM_EMAIL is required in environment variables');
-}
-
-// Create Resend instance
-const resend = new Resend(process.env.RESEND_API_KEY);
-
-// Create a compatible transporter interface for your existing code
+// Create transporter based on environment variables
 const createTransporter = () => {
-  return {
-    sendMail: async (mailOptions) => {
-      try {
-        console.log(`Sending email via Resend to: ${mailOptions.to}`);
-        
-        const { data, error } = await resend.emails.send({
-          from: mailOptions.from,
-          to: [mailOptions.to],
-          subject: mailOptions.subject,
-          html: mailOptions.html,
-          text: mailOptions.text || mailOptions.html?.replace(/<[^>]*>/g, ''), // Fallback to stripped HTML if no text
-        });
-
-        if (error) {
-          console.error('Resend API error:', error);
-          throw new Error(`Resend API error: ${error.message}`);
-        }
-
-        console.log(`✅ Email sent successfully via Resend. ID: ${data.id}`);
-        return { messageId: data.id };
-      } catch (error) {
-        console.error('Failed to send email via Resend:', error);
-        throw error;
+  if (process.env.SENDGRID_API_KEY) {
+    // SendGrid configuration
+    return nodemailer.createTransport({
+      service: 'SendGrid',
+      auth: {
+        user: 'apikey',
+        pass: process.env.SENDGRID_API_KEY
       }
-    },
-
-    verify: async () => {
-      // Resend doesn't have a verify method, but we can test the API key
-      try {
-        // You could make a test API call here if needed
-        console.log('✅ Resend transporter configured');
-        return true;
-      } catch (error) {
-        console.error('❌ Resend transporter verification failed:', error);
-        throw error;
+    });
+  } else {
+    // SMTP configuration (Gmail, etc.)
+    return nodemailer.createTransport({
+      host: process.env.SMTP_HOST,
+      port: process.env.SMTP_PORT,
+      secure: false, // true for 465, false for other ports
+      auth: {
+        user: process.env.SMTP_USER,
+        pass: process.env.SMTP_PASS
       }
-    }
-  };
+    });
+  }
 };
 
 const transporter = createTransporter();
@@ -61,16 +32,13 @@ const transporter = createTransporter();
 const verifyTransporter = async () => {
   try {
     await transporter.verify();
-    console.log('✅ Resend transporter ready');
-    return true;
+    console.log('Email transporter verified successfully');
   } catch (error) {
-    console.error('❌ Resend transporter verification failed:', error);
-    throw error;
+    console.error('Email transporter verification failed:', error);
   }
 };
 
 module.exports = {
   transporter,
-  verifyTransporter,
-  resend // Export the raw Resend instance if needed elsewhere
+  verifyTransporter
 };
