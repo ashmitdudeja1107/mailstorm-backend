@@ -15,7 +15,7 @@ const googleAuthMiddleware = async (req, res, next) => {
         message: "Authorization token is required" 
       });
     }
-
+    
     const token = authHeader.split(' ')[1];
     
     if (!token) {
@@ -34,7 +34,6 @@ const googleAuthMiddleware = async (req, res, next) => {
     });
     
     const email = decoded.email;
-
     console.log("Checking for existing user with email:", email);
     const existingUser = await getUserByEmail(email);
     
@@ -54,13 +53,30 @@ const googleAuthMiddleware = async (req, res, next) => {
       });
     }
 
-    console.log("Google authentication successful");
+    // **CRITICAL CHECK: Verify manual approval for mail service access**
+    if (!existingUser.manual_check) {
+      console.log("User not approved for mail service access:", existingUser.email);
+      return res.status(403).json({ 
+        success: false,
+        message: "Access denied. Your account is pending admin approval for mail service access.",
+        status: "pending_approval",
+        user: {
+          id: existingUser.id,
+          name: existingUser.name,
+          email: existingUser.email,
+          manual_check: false
+        }
+      });
+    }
+
+    console.log("Google authentication successful - user approved for mail service");
     
     // Attach user data to request object
     req.user = {
       id: existingUser.id,
       name: existingUser.name,
-      email: existingUser.email
+      email: existingUser.email,
+      manual_check: existingUser.manual_check
     };
     
     // Set user_id for compatibility with existing code
