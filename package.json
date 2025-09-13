@@ -34,7 +34,8 @@
     "pg-hstore": "^2.3.4",
     "redis": "^4.6.0",
     "sequelize": "^6.37.7",
-    "concurrently": "^9.2.0"
+    "concurrently": "^9.2.0",
+    "resend": "^6.0.3"
   },
   "devDependencies": {
     
