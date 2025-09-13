@@ -56,7 +56,7 @@ app.use("/api/auth", authRoutes);
 
 // 🔒 PROTECTED MAIL SERVICE ROUTES - Only approved users can access
 // These routes require manual_check = true
-app.use('/api/campaigns', googleAuthMiddleware, campaignRoutes);
+app.use('/api/campaigns', campaignRoutes);
 app.use('/api/opens',  openTrackingRoutes);
 
 // You can add more protected routes here as needed:
@@ -111,4 +111,5 @@ const startServer = async () => {
 startServer();
 
 module.exports = app;
+
 
