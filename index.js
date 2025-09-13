@@ -6,9 +6,11 @@ require("dotenv").config();
 
 // Import route handlers
 const authRoutes = require("./routes/authRoutes");
-
 const campaignRoutes = require('./routes/campaigns');
 const openTrackingRoutes = require('./routes/opens');
+
+// Import authentication middleware
+const googleAuthMiddleware = require('./middleware/googleAuthMiddleware'); // Adjust path as needed
 
 const app = express();
 
@@ -26,12 +28,12 @@ app.use(bodyParser.urlencoded({ extended: true }));
 // Trust proxy for accurate IP addresses
 app.set('trust proxy', true);
 
-// Test endpoint
+// Test endpoint (public - no auth required)
 app.get("/api/message", (req, res) => {
   res.json({ message: "Hello from backend!" });
 });
 
-// Health check endpoints
+// Health check endpoints (public - no auth required)
 app.get("/api/health", (req, res) => {
   res.json({ 
     message: "Server is running",
@@ -49,10 +51,18 @@ app.get('/health', (req, res) => {
 });
 
 // Mount routes
+// Auth routes (public - no protection needed for login/signup)
 app.use("/api/auth", authRoutes);
 
-app.use('/api/campaigns', campaignRoutes);
-app.use('/api/opens', openTrackingRoutes);
+// 🔒 PROTECTED MAIL SERVICE ROUTES - Only approved users can access
+// These routes require manual_check = true
+app.use('/api/campaigns', googleAuthMiddleware, campaignRoutes);
+app.use('/api/opens', googleAuthMiddleware, openTrackingRoutes);
+
+// You can add more protected routes here as needed:
+// app.use('/api/recipients', googleAuthMiddleware, recipientRoutes);
+// app.use('/api/analytics', googleAuthMiddleware, analyticsRoutes);
+// app.use('/api/templates', googleAuthMiddleware, templateRoutes);
 
 // Global error handler
 app.use((err, req, res, next) => {
@@ -85,12 +95,12 @@ const startServer = async () => {
     
     app.listen(PORT, () => {
       console.log(`🚀 MailStorm API server running on port ${PORT}`);
-    
       console.log(`🔐 Auth service available at: http://localhost:${PORT}/api/auth`);
-      console.log(`📊 Campaigns service available at: http://localhost:${PORT}/api/campaigns`);
-      console.log(`📈 Opens tracking available at: http://localhost:${PORT}/api/opens`);
+      console.log(`📊 🔒 Protected Campaigns service: http://localhost:${PORT}/api/campaigns`);
+      console.log(`📈 🔒 Protected Opens tracking: http://localhost:${PORT}/api/opens`);
       console.log(`🏥 Health check: http://localhost:${PORT}/api/health`);
       console.log(`Environment: ${process.env.NODE_ENV || 'development'}`);
+      console.log('🛡️  Mail services protected by manual approval system');
     });
   } catch (error) {
     console.error('Failed to start server:', error);
