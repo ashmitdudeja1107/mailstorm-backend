@@ -5,16 +5,6 @@ const router = express.Router();
 const admin = require("../config/firebase");
 const { createUser, getUserByEmail } = require("../models/userModel");
 
-// Signup route
-
-
-// Run this once to generate the correct hash for "rt12"
-
-
-
-
-
-
 // GOOGLE SIGNUP ROUTE
 router.post("/google-signup", async (req, res) => {
   try {
@@ -42,7 +32,11 @@ router.post("/google-signup", async (req, res) => {
     
     if (existingUser) {
       console.log("User already exists:", existingUser.email);
-      return res.status(409).json({ message: "User already exists" });
+      return res.status(409).json({ 
+        message: "User already exists",
+        manual_check: existingUser.manual_check,
+        status: existingUser.manual_check ? "approved" : "pending_approval"
+      });
     }
 
     console.log("Creating new user:", { name, email });
@@ -52,13 +46,15 @@ router.post("/google-signup", async (req, res) => {
 
     console.log("Database insertion result:", newUser);
     
-    // Return user data WITHOUT password
+    // Return user data WITHOUT password, including manual_check status
     res.status(201).json({ 
-      message: "Google signup successful", 
+      message: "Google signup successful. Account is pending approval.", 
       user: {
         user_id: newUser.id,
         name: newUser.name,
-        email: newUser.email
+        email: newUser.email,
+        manual_check: false,
+        status: "pending_approval"
       }
     });
   } catch (error) {
@@ -80,6 +76,7 @@ router.post("/google-signup", async (req, res) => {
     res.status(500).json({ message: "Internal server error", error: error.message });
   }
 });
+
 // GOOGLE LOGIN ROUTE
 router.post("/google-login", async (req, res) => {
   try {
@@ -116,17 +113,34 @@ router.post("/google-login", async (req, res) => {
       });
     }
 
-    console.log("Google login successful");
+    // Check if user is approved for mail service access
+    if (!existingUser.manual_check) {
+      console.log("User not approved for mail service access");
+      return res.status(403).json({ 
+        message: "Your account is pending approval. Please wait for admin approval to access mail services.",
+        status: "pending_approval",
+        user: {
+          id: existingUser.id,
+          name: existingUser.name,
+          email: existingUser.email,
+          manual_check: false
+        }
+      });
+    }
+
+    console.log("Google login successful - user is approved");
     
-    // Return user data
+    // Return user data for approved users only
     res.status(200).json({ 
-      message: "Google login successful", 
-      token:token,
+      message: "Login successful. Welcome to the mail service!", 
+      token: token,
+      status: "approved",
+      approved: true,
       user: {
         id: existingUser.id,
         name: existingUser.name,
         email: existingUser.email,
-      
+        manual_check: true
       }
     });
   } catch (error) {
