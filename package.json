@@ -5,7 +5,7 @@
   "main": "index.js",
   "scripts": {
     "start": "node index.js",
-    "dev": "concurrently \"nodemon index.js\" \"node worker.js\"",
+    "dev": "nodemon index.js",
     "worker": "node worker.js",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
@@ -33,10 +33,11 @@
     "pg": "^8.16.0",
     "pg-hstore": "^2.3.4",
     "redis": "^4.6.0",
-    "sequelize": "^6.37.7"
+    "sequelize": "^6.37.7",
+    "concurrently": "^9.2.0",
+    "resend": "^6.0.3"
   },
   "devDependencies": {
-    "concurrently": "^9.2.0",
     "nodemon": "^3.0.1"
   }
 }
