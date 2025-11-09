@@ -15,22 +15,10 @@ const googleAuthMiddleware = require('./middleware/googleAuthMiddleware'); // Ad
 const app = express();
 
 // CORS configuration
-app.use(
-  cors({
-    origin: [
-      "https://mailstorn.onrender.com",
-      "http://127.0.0.1:5500",
-      "http://localhost:5500",
-      "http://13.232.248.97",
-      "http://localhost:3000"
-    ],
-    methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
-    allowedHeaders: ["Content-Type", "Authorization"],
-    credentials: true,
-  })
-);
-
-app.options("*", cors());
+app.use(cors({
+  origin: ['https://mailstorn.onrender.com', 'http://127.0.0.1:5500', 'http://localhost:5500'],
+  credentials: true
+}));
 
 // Middleware
 app.use(express.json());
