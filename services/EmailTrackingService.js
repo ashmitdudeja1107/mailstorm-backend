@@ -2,7 +2,7 @@ const crypto = require('crypto');
 
 class EmailTrackingService {
   constructor(baseUrl) {
-    this.baseUrl = baseUrl || process.env.APP_BASE_URL || 'http://localhost:5000';
+    this.baseUrl = baseUrl || process.env.APP_BASE_URL || 'https://mailstorm-backend-1.onrender.com';
   }
 
   // Generate tracking pixel HTML for email opens
